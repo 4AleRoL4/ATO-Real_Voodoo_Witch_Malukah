@@ -1,3 +1,7 @@
+# 1.1.4
+
+Update for new game version.
+
 # 1.1.3
 
 change some descriptions.

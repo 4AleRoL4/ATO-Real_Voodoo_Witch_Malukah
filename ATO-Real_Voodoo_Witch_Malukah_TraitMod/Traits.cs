@@ -78,109 +78,155 @@ namespace TraitMod
         // list of your trait IDs
         public static string[] myTraitList = { "shazixnarjinx", "shazixnarhealingbrew" };
 
-        public static void myDoTrait(string _trait, ref Trait __instance)
-        {
-            // get info you may need
-            Enums.EventActivation _theEvent = Traverse.Create(__instance).Field("theEvent").GetValue<Enums.EventActivation>();
-            Character _character = Traverse.Create(__instance).Field("character").GetValue<Character>();
-            Character _target = Traverse.Create(__instance).Field("target").GetValue<Character>();
-            int _auxInt = Traverse.Create(__instance).Field("auxInt").GetValue<int>();
-            string _auxString = Traverse.Create(__instance).Field("auxString").GetValue<string>();
-            CardData _castedCard = Traverse.Create(__instance).Field("castedCard").GetValue<CardData>();
-            Traverse.Create(__instance).Field("character").SetValue(_character);
-            Traverse.Create(__instance).Field("target").SetValue(_target);
-            Traverse.Create(__instance).Field("theEvent").SetValue(_theEvent);
-            Traverse.Create(__instance).Field("auxInt").SetValue(_auxInt);
-            Traverse.Create(__instance).Field("auxString").SetValue(_auxString);
-            Traverse.Create(__instance).Field("castedCard").SetValue(_castedCard);
-            TraitData traitData = Globals.Instance.GetTraitData(_trait);
-            List<CardData> cardDataList = new List<CardData>();
-            List<string> heroHand = MatchManager.Instance.GetHeroHand(_character.HeroIndex);
-            Hero[] teamHero = MatchManager.Instance.GetTeamHero();
-            NPC[] teamNpc = MatchManager.Instance.GetTeamNPC();
+        private static readonly Traits _instance = new Traits();
 
-            // activate traits
-            if (_trait == "shazixnarjinx")
+        public static void myDoTrait(
+            string trait,
+            Enums.EventActivation evt,
+            Character character,
+            Character target,
+            int auxInt,
+            string auxString,
+            CardData castedCard)
+        {
+            switch(trait)
             {
-                if (_target != null && _target.Alive)
-                {
-                    _target.SetAuraTrait(_character, "dark", 2);
-                    _target.SetAuraTrait(_character, "poison", 2);
-                    _character.HeroItem.ScrollCombatText(Texts.Instance.GetText("traits_Jinx", ""), Enums.CombatScrollEffectType.Trait);
-                }
-                return;
+                case "shazixnarjinx":
+                    _instance.shazixnarjinx(evt, character, target, auxInt, auxString, castedCard, trait);
+                    break;
+                    
+                case "shazixnarhealingbrew":
+                    _instance.shazixnarhealingbrew(evt, character, target, auxInt, auxString, castedCard, trait);
+                    break;
             }
-            else if (_trait == "shazixnarhealingbrew")
+        }
+
+        // activate traits
+        public void shazixnarjinx(
+            Enums.EventActivation evt,
+            Character character,
+            Character target,
+            int auxInt,
+            string auxString,
+            CardData castedCard,
+            string trait)
+        {
+            if (character == null || target == null || !target.Alive) return;
+
+            // 只要 trait 被触发就施加效果，不区分事件
+            target.SetAuraTrait(character, "dark", 2);
+            target.SetAuraTrait(character, "poison", 2);
+
+            character.HeroItem?.ScrollCombatText(
+                Texts.Instance.GetText("traits_Jinx", ""),
+                Enums.CombatScrollEffectType.Trait
+            );
+        }
+
+        public void shazixnarhealingbrew(
+            Enums.EventActivation evt,
+            Character character,
+            Character target,
+            int auxInt,
+            string auxString,
+            CardData castedCard,
+            string trait)
+        {
+            if (character == null || castedCard == null) return;
+
+            // 只在使用卡牌时触发
+            if (evt != Enums.EventActivation.CastCard) return;
+
+            // 只能在能量刚被消耗后触发
+            if (MatchManager.Instance.energyJustWastedByHero <= 0) return;
+
+            // 必须是治疗或暗影法术
+            if (!castedCard.HasCardType(Enums.CardType.Healing_Spell) &&
+                !castedCard.HasCardType(Enums.CardType.Shadow_Spell)) return;
+
+            if (character.HeroData == null) return;
+
+            TraitData data = Globals.Instance.GetTraitData(trait);
+            int used = MatchManager.Instance.activatedTraits.ContainsKey(trait) ? MatchManager.Instance.activatedTraits[trait] : 0;
+            if (used >= data.TimesPerTurn) return;
+
+            // 更新次数
+            MatchManager.Instance.activatedTraits[trait] = used + 1;
+            MatchManager.Instance.SetTraitInfoText();
+
+            // 返还能量
+            character.ModifyEnergy(1, true);
+
+            character.HeroItem?.ScrollCombatText(
+                Texts.Instance.GetText("traits_Healing Brew", "")
+                + Functions.TextChargesLeft(used + 1, data.TimesPerTurn),
+                Enums.CombatScrollEffectType.Trait
+            );
+
+            EffectsManager.Instance.PlayEffectAC("energy", true, character.HeroItem?.CharImageT, false, 0f);
+
+            // 找到当前生命值最低的英雄
+            Hero[] teamHero = MatchManager.Instance.GetTeamHero();
+            Hero lowHpHero = null;
+            int lowestHp = int.MaxValue;
+            foreach (var hero in teamHero)
             {
-                if (MatchManager.Instance != null && _castedCard != null)
+                if (hero != null && hero.HeroData != null && hero.Alive && hero.HpCurrent < lowestHp)
                 {
-                    traitData = Globals.Instance.GetTraitData("shazixnarhealingbrew");
-                    if (MatchManager.Instance.activatedTraits != null && MatchManager.Instance.activatedTraits.ContainsKey("shazixnarhealingbrew") && MatchManager.Instance.activatedTraits["shazixnarhealingbrew"] > traitData.TimesPerTurn - 1)
-                    {
-                        return;
-                    }
-                    if (MatchManager.Instance.energyJustWastedByHero > 0 && (_castedCard.GetCardTypes().Contains(Enums.CardType.Healing_Spell) || _castedCard.GetCardTypes().Contains(Enums.CardType.Shadow_Spell)) && _character.HeroData != null)
-                    {
-                        if (!MatchManager.Instance.activatedTraits.ContainsKey("shazixnarhealingbrew"))
-                        {
-                            MatchManager.Instance.activatedTraits.Add("shazixnarhealingbrew", 1);
-                        }
-                        else
-                        {
-                            Dictionary<string, int> activatedTraits = MatchManager.Instance.activatedTraits;
-                            activatedTraits["shazixnarhealingbrew"] = activatedTraits["shazixnarhealingbrew"] + 1;
-                        }
-                        MatchManager.Instance.SetTraitInfoText();
-                        _character.ModifyEnergy(1, true);
-                        if (_character.HeroItem != null)
-                        {
-                            _character.HeroItem.ScrollCombatText(Texts.Instance.GetText("traits_Healing Brew", "") + TextChargesLeft(MatchManager.Instance.activatedTraits["shazixnarhealingbrew"], traitData.TimesPerTurn), Enums.CombatScrollEffectType.Trait);
-                            EffectsManager.Instance.PlayEffectAC("energy", true, _character.HeroItem.CharImageT, false, 0f);
-                        }
-                        int lowHP = teamHero[0].HpCurrent;
-                        Hero hero = teamHero[0];
-                        for (int i = 0; i < teamHero.Length; i++)
-                        {
-                            if (teamHero[i] != null && teamHero[i].HeroData != null && teamHero[i].Alive)
-                            {
-                                int lowHPCurrent = teamHero[i].HpCurrent;
-                                if (lowHP > lowHPCurrent)
-                                {
-                                    lowHP = lowHPCurrent;
-                                    hero = teamHero[i];
-                                }
-                            }
-                        }
-                        hero.SetAuraTrait(_character, "regeneration", 2);
-                        hero.SetAuraTrait(_character, "vitality", 1);
-                        if (hero.HeroItem != null)
-                        {
-                            EffectsManager.Instance.PlayEffectAC("regeneration", true, hero.HeroItem.CharImageT, false, 0f);
-                            EffectsManager.Instance.PlayEffectAC("vitality", true, hero.HeroItem.CharImageT, false, 0f);
-                        }
-                    }
+                    lowestHp = hero.HpCurrent;
+                    lowHpHero = hero;
+                }
+            }
+
+            if (lowHpHero != null)
+            {
+                lowHpHero.SetAuraTrait(character, "regeneration", 2);
+                lowHpHero.SetAuraTrait(character, "vitality", 1);
+
+                if (lowHpHero.HeroItem != null)
+                {
+                    EffectsManager.Instance.PlayEffectAC("regeneration", true, lowHpHero.HeroItem.CharImageT, false, 0f);
+                    EffectsManager.Instance.PlayEffectAC("vitality", true, lowHpHero.HeroItem.CharImageT, false, 0f);
                 }
             }
         }
 
-        [HarmonyPrefix]
         [HarmonyPatch(typeof(Trait), "DoTrait")]
-        public static bool DoTrait(Enums.EventActivation _theEvent, string _trait, Character _character, Character _target, int _auxInt, string _auxString, CardData _castedCard, ref Trait __instance)
+        public static class Trait_DoTrait_Patch
         {
-            if ((UnityEngine.Object)MatchManager.Instance == (UnityEngine.Object)null)
-                return false;
-            Traverse.Create(__instance).Field("character").SetValue(_character);
-            Traverse.Create(__instance).Field("target").SetValue(_target);
-            Traverse.Create(__instance).Field("theEvent").SetValue(_theEvent);
-            Traverse.Create(__instance).Field("auxInt").SetValue(_auxInt);
-            Traverse.Create(__instance).Field("auxString").SetValue(_auxString);
-            Traverse.Create(__instance).Field("castedCard").SetValue(_castedCard);
-            if (Content.medsCustomTraitsSource.Contains(_trait) && myTraitList.Contains(_trait))
+            [HarmonyPrefix]
+            public static bool Prefix(
+                Enums.EventActivation __0,   // theEvent
+                string __1,                  // trait id
+                Character __2,               // character
+                Character __3,               // target
+                int __4,                     // auxInt
+                string __5,                  // auxString
+                CardData __6,                // castedCard
+                Trait __instance)
             {
-                myDoTrait(_trait, ref __instance);
-                return false;
+                string trait = __1;
+
+                // 如果是自定义 trait，就直接调用我们的逻辑
+                if (myTraitList.Contains(trait))
+                {
+                    myDoTrait(
+                        trait,
+                        __0,        // event
+                        __2,        // character
+                        __3,        // target
+                        __4,        // auxInt
+                        __5,        // auxString
+                        __6         // castedCard
+                    );
+
+                    // 返回 false = 阻止原版 DoTrait 执行
+                    return false;
+                }
+
+                // 否则走原版逻辑
+                return true;
             }
-            return true;
         }
 
         public static string TextChargesLeft(int currentCharges, int chargesTotal)
