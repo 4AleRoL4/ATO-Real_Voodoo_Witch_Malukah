@@ -76,7 +76,7 @@ namespace TraitMod
         }
 
         // list of your trait IDs
-        public static string[] myTraitList = { "shazixnarjinx", "shazixnarhealingbrew" };
+        public static string[] myTraitList = { "shazixnarjinx", "shazixnarhealingbrew", "shazixnarmojo" };
 
         private static readonly Traits _instance = new Traits();
 
@@ -98,6 +98,10 @@ namespace TraitMod
                 case "shazixnarhealingbrew":
                     _instance.shazixnarhealingbrew(evt, character, target, auxInt, auxString, castedCard, trait);
                     break;
+
+                case "shazixnarmojo":
+                    _instance.shazixnarmojo(evt, character, target, auxInt, auxString, castedCard, trait);
+                break;
             }
         }
 
@@ -133,9 +137,6 @@ namespace TraitMod
             string trait)
         {
             if (character == null || castedCard == null) return;
-
-            // 只在使用卡牌时触发
-            if (evt != Enums.EventActivation.CastCard) return;
 
             // 只能在能量刚被消耗后触发
             if (MatchManager.Instance.energyJustWastedByHero <= 0) return;
@@ -186,7 +187,34 @@ namespace TraitMod
                 if (lowHpHero.HeroItem != null)
                 {
                     EffectsManager.Instance.PlayEffectAC("regeneration", true, lowHpHero.HeroItem.CharImageT, false, 0f);
-                    EffectsManager.Instance.PlayEffectAC("vitality", true, lowHpHero.HeroItem.CharImageT, false, 0f);
+                    EffectsManager.Instance.PlayEffectAC("heart", true, lowHpHero.HeroItem.CharImageT, false, 0f);
+                }
+            }
+        }
+
+        public void shazixnarmojo(
+            Enums.EventActivation evt,
+            Character character,
+            Character target,
+            int auxInt,
+            string auxString,
+            CardData castedCard,
+            string trait)
+        {
+            if (MatchManager.Instance != null && castedCard != null && castedCard.GetCardTypes().Contains(Enums.CardType.Healing_Spell))
+            {
+                Hero[] teamHero = MatchManager.Instance.GetTeamHero();
+                for (int i = 0; i < teamHero.Length; i++)
+                {
+                    if (teamHero[i] != null && teamHero[i].HeroData != null && teamHero[i].Alive)
+                    {
+                        teamHero[i].HealCurses(1);
+                        if (teamHero[i].HeroItem != null)
+                        {
+                            teamHero[i].HeroItem.ScrollCombatText(Texts.Instance.GetText("traits_Mojo", ""), Enums.CombatScrollEffectType.Trait);
+                            EffectsManager.Instance.PlayEffectAC("dispel", true, teamHero[i].HeroItem.CharImageT, false, 0f, false);
+                        }
+                    }
                 }
             }
         }
@@ -343,12 +371,6 @@ namespace TraitMod
                     __result.CharacterStatModifiedValuePerStack = 8;
                 }
             }
-        }
-
-        [HarmonyPrefix]
-        [HarmonyPatch(typeof(Character), "SetEvent")]
-        public static void SetEventPrefix(ref Character __instance, ref Enums.EventActivation theEvent, Character target = null)
-        {
         }
     }
 }

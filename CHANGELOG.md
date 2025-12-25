@@ -1,3 +1,7 @@
+# 1.1.5
+
+Fix a bug.
+
 # 1.1.4
 
 Update for new game version.
